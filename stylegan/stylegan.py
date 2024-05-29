@@ -77,7 +77,8 @@ class FusedUpsample(nn.Module):
             + weight[:, :, :-1, :-1]
         ) / 4
 
-        out = F.conv_transpose2d(input, weight, self.bias, stride=2, padding=self.pad)
+        out = F.conv_transpose2d(
+            input, weight, self.bias, stride=2, padding=self.pad)
 
         return out
 
@@ -154,7 +155,8 @@ class BlurFunction(Function):
     def backward(ctx, grad_output):
         kernel, kernel_flip = ctx.saved_tensors
 
-        grad_input = BlurFunctionBackward.apply(grad_output, kernel, kernel_flip)
+        grad_input = BlurFunctionBackward.apply(
+            grad_output, kernel, kernel_flip)
 
         return grad_input, None, None
 
@@ -166,13 +168,15 @@ class Blur(nn.Module):
     def __init__(self, channel):
         super().__init__()
 
-        weight = torch.tensor([[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=torch.float32)
+        weight = torch.tensor(
+            [[1, 2, 1], [2, 4, 2], [1, 2, 1]], dtype=torch.float32)
         weight = weight.view(1, 1, 3, 3)
         weight = weight / weight.sum()
         weight_flip = torch.flip(weight, [2, 3])
 
         self.register_buffer('weight', weight.repeat(channel, 1, 1, 1))
-        self.register_buffer('weight_flip', weight_flip.repeat(channel, 1, 1, 1))
+        self.register_buffer(
+            'weight_flip', weight_flip.repeat(channel, 1, 1, 1))
 
     def forward(self, input):
         return blur(input, self.weight, self.weight_flip)
@@ -239,14 +243,16 @@ class ConvBlock(nn.Module):
             if fused:
                 self.conv2 = nn.Sequential(
                     Blur(out_channel),
-                    FusedDownsample(out_channel, out_channel, kernel2, padding=pad2),
+                    FusedDownsample(out_channel, out_channel,
+                                    kernel2, padding=pad2),
                     nn.LeakyReLU(0.2),
                 )
 
             else:
                 self.conv2 = nn.Sequential(
                     Blur(out_channel),
-                    EqualConv2d(out_channel, out_channel, kernel2, padding=pad2),
+                    EqualConv2d(out_channel, out_channel,
+                                kernel2, padding=pad2),
                     nn.AvgPool2d(2),
                     nn.LeakyReLU(0.2),
                 )
@@ -352,7 +358,8 @@ class StyledConvBlock(nn.Module):
         self.adain1 = AdaptiveInstanceNorm(out_channel, style_dim)
         self.lrelu1 = nn.LeakyReLU(0.2)
 
-        self.conv2 = EqualConv2d(out_channel, out_channel, kernel_size, padding=padding)
+        self.conv2 = EqualConv2d(
+            out_channel, out_channel, kernel_size, padding=padding)
         self.noise2 = equal_lr(NoiseInjection(out_channel))
         self.adain2 = AdaptiveInstanceNorm(out_channel, style_dim)
         self.lrelu2 = nn.LeakyReLU(0.2)
@@ -382,10 +389,14 @@ class Generator(nn.Module):
                 StyledConvBlock(512, 512, 3, 1, upsample=True),  # 16
                 StyledConvBlock(512, 512, 3, 1, upsample=True),  # 32
                 StyledConvBlock(512, 256, 3, 1, upsample=True),  # 64
-                StyledConvBlock(256, 128, 3, 1, upsample=True, fused=fused),  # 128
-                StyledConvBlock(128, 64, 3, 1, upsample=True, fused=fused),  # 256
-                StyledConvBlock(64, 32, 3, 1, upsample=True, fused=fused),  # 512
-                StyledConvBlock(32, 16, 3, 1, upsample=True, fused=fused),  # 1024
+                StyledConvBlock(256, 128, 3, 1, upsample=True,
+                                fused=fused),  # 128
+                StyledConvBlock(128, 64, 3, 1, upsample=True,
+                                fused=fused),  # 256
+                StyledConvBlock(64, 32, 3, 1, upsample=True,
+                                fused=fused),  # 512
+                StyledConvBlock(32, 16, 3, 1, upsample=True,
+                                fused=fused),  # 1024
             ]
         )
 
@@ -412,7 +423,8 @@ class Generator(nn.Module):
             inject_index = [len(self.progression) + 1]
 
         else:
-            inject_index = sorted(random.sample(list(range(step)), len(style) - 1))
+            inject_index = sorted(random.sample(
+                list(range(step)), len(style) - 1))
 
         crossover = 0
 
@@ -432,7 +444,7 @@ class Generator(nn.Module):
 
             if i > 0 and step > 0:
                 out_prev = out
-                
+
             out = conv(out, style_step, noise[i])
 
             if i == step:
@@ -440,7 +452,8 @@ class Generator(nn.Module):
 
                 if i > 0 and 0 <= alpha < 1:
                     skip_rgb = self.to_rgb[i - 1](out_prev)
-                    skip_rgb = F.interpolate(skip_rgb, scale_factor=2, mode='nearest')
+                    skip_rgb = F.interpolate(
+                        skip_rgb, scale_factor=2, mode='nearest')
                     out = (1 - alpha) * skip_rgb + alpha * out
 
                 break
@@ -474,16 +487,17 @@ class StyledGenerator(nn.Module):
         mixing_range=(-1, -1),
     ):
         styles = []
-        if input is None and w is not None:
+        if w is not None:
             assert w.shape[1] == self.code_dim
-            styles = w
-            batch = styles.shape[0]
+            batch = w.shape[0]
+            styles = [w]
         elif input is None and w is None:
-            raise ValueError("Both input and w can't be None at the same time!")
+            raise ValueError(
+                "Both input and w can't be None at the same time!")
         else:
             if type(input) not in (list, tuple):
                 input = [input]
-    
+
             for i in input:
                 styles.append(self.style(i))
 
@@ -494,13 +508,15 @@ class StyledGenerator(nn.Module):
 
             for i in range(step + 1):
                 size = 4 * 2 ** i
-                noise.append(torch.randn(batch, 1, size, size, device=input[0].device))
+                noise.append(torch.randn(batch, 1, size,
+                             size, device=input[0].device))
 
         if mean_style is not None:
             styles_norm = []
 
             for style in styles:
-                styles_norm.append(mean_style + style_weight * (style - mean_style))
+                styles_norm.append(
+                    mean_style + style_weight * (style - mean_style))
 
             styles = styles_norm
 
